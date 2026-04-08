@@ -1,0 +1,28 @@
+[package]
+name = "mem-nexus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+fastembed = "5.13.1"
+rust-mcp-sdk = "0.8.3"
+async-trait = "0.1.80"
+anyhow = "1"
+thiserror = "1"
+reqwest = { version = "0.13.2", features = ["json"] }
+dirs = "6.0.0"
+
+[dev-dependencies]
+criterion = "0.8.2"
+
+[[bench]]
+name = "throughput"
+harness = false
+
+[[bin]]
+name = "longmemeval"
+path = "benches/longmemeval.rs"
