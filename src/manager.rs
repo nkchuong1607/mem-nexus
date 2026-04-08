@@ -65,13 +65,11 @@ impl MemoryManager {
         })?;
 
         let mut duplicate_id = None;
-        for r in rows {
-            if let Ok((id, existing_emb)) = r {
-                let sim = cosine_similarity(&embedding, &existing_emb);
-                if sim > 0.95 {
-                    duplicate_id = Some(id);
-                    break;
-                }
+        for (id, existing_emb) in rows.flatten() {
+            let sim = cosine_similarity(&embedding, &existing_emb);
+            if sim > 0.95 {
+                duplicate_id = Some(id);
+                break;
             }
         }
 
@@ -178,11 +176,9 @@ impl MemoryManager {
                     let score: f64 = row.get(1)?;
                     Ok((id, (-score) as f32)) // SQLite BM25 is negatively scored natively
                 }) {
-                    for r in rows {
-                        if let Ok((id, score)) = r {
-                            let normalized_overlap = (0.2 + (score / 3.0)).min(1.0);
-                            keyword_hits.insert(id, normalized_overlap);
-                        }
+                    for (id, score) in rows.flatten() {
+                        let normalized_overlap = (0.2 + (score / 3.0)).min(1.0);
+                        keyword_hits.insert(id, normalized_overlap);
                     }
                 }
             }

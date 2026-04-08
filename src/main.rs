@@ -118,7 +118,7 @@ impl ServerHandler for NexusHandler {
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, schema_utils::CallToolError> {
         let tool: NexusTools =
-            NexusTools::try_from(params).map_err(|e| schema_utils::CallToolError::new(e))?;
+            NexusTools::try_from(params).map_err(schema_utils::CallToolError::new)?;
 
         match tool {
             NexusTools::AddMemoryTool(t) => {

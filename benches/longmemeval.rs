@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
-use reqwest;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
@@ -50,11 +49,7 @@ fn run_query(
     entry: &LongMemEvalEntry,
     wing_name: &str,
 ) -> anyhow::Result<(bool, bool)> {
-    let target_answers: Vec<String> = entry
-        .answer_session_ids
-        .iter()
-        .map(|v| val_to_str(v))
-        .collect();
+    let target_answers: Vec<String> = entry.answer_session_ids.iter().map(val_to_str).collect();
     let results = manager.search_memory(Some(wing_name), Some("global_room"), &entry.question)?;
 
     let mut found_targets = std::collections::HashSet::new();
@@ -72,10 +67,10 @@ fn run_query(
 
     let mut hit_any = false;
     let mut hit_all = false;
-    if found_targets.len() > 0 {
+    if !found_targets.is_empty() {
         hit_any = true;
     }
-    if found_targets.len() == target_answers.len() && target_answers.len() > 0 {
+    if found_targets.len() == target_answers.len() && !target_answers.is_empty() {
         hit_all = true;
     }
     Ok((hit_any, hit_all))
