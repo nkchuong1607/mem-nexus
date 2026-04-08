@@ -11,7 +11,7 @@
 
 Mem-Nexus is a high-performance, local-first alternative to MemPalace written entirely in **Rust**. It provides your AI agents (Cursor, Claude Desktop, Antigravity, Gemini) with absolute persistent long-term storage, allowing them to recall conversational contexts seamlessly across different sessions without bloated API costs.
 
-By discarding complex graph constraints and opting for a lightning-fast **Hybrid Scoring Heuristic (Standard Overlap Ratio + Cosine Similarity)**, Mem-Nexus achieves a verified **96.80% Recall@5** on the `LongMemEval` benchmark suite—outperforming MemPalace's baseline (96.60%) natively.
+By discarding complex graph constraints and opting for a lightning-fast **Hybrid Scoring Heuristic (Standard Overlap Ratio + Cosine Similarity)**, Mem-Nexus achieves a verified **96.80% Recall@5** on the `LongMemEval` benchmark suite.
 
 ## 🚀 Key Features
 
