@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
-use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use rusqlite::Connection;
 
 #[path = "../src/db.rs"]
@@ -17,7 +17,11 @@ fn bench_ingestion(c: &mut Criterion) {
         b.iter_batched(
             || MemoryManager::new(":memory:").unwrap(),
             |manager| {
-                manager.add_memory("bench_wing", "bench_room", "This is a simple bench test memory.")
+                manager.add_memory(
+                    "bench_wing",
+                    "bench_room",
+                    "This is a simple bench test memory.",
+                )
             },
             BatchSize::PerIteration,
         );
@@ -28,12 +32,22 @@ fn bench_search(c: &mut Criterion) {
     let manager = MemoryManager::new(":memory:").unwrap();
     // Seed with 100 entries
     for i in 0..100 {
-        manager.add_memory("bench_wing", "bench_room", &format!("Context memory chunk number {}", i)).unwrap();
+        manager
+            .add_memory(
+                "bench_wing",
+                "bench_room",
+                &format!("Context memory chunk number {}", i),
+            )
+            .unwrap();
     }
-    
+
     c.bench_function("search_100_memories", |b| {
         b.iter(|| {
-            manager.search_memory(Some("bench_wing"), Some("bench_room"), "querying for chunk 55")
+            manager.search_memory(
+                Some("bench_wing"),
+                Some("bench_room"),
+                "querying for chunk 55",
+            )
         })
     });
 }

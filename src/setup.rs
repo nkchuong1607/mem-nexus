@@ -18,13 +18,21 @@ pub fn run_setup() {
     };
 
     println!("Starting mem-nexus auto-setup...");
-    
+
     // Core IDE injection
     let targets = vec![
         ("Cursor", home.join(".cursor/mcp.json"), true),
         ("Gemini CLI", home.join(".gemini/settings/mcp.json"), true),
-        ("Antigravity", home.join(".gemini/antigravity/mcp_config.json"), true),
-        ("Windsurf", home.join(".codeium/windsurf/mcp_config.json"), true),
+        (
+            "Antigravity",
+            home.join(".gemini/antigravity/mcp_config.json"),
+            true,
+        ),
+        (
+            "Windsurf",
+            home.join(".codeium/windsurf/mcp_config.json"),
+            true,
+        ),
         ("Claude Desktop", get_claude_desktop_path(&home), true),
         ("JetBrains", home.join(".jb-mcp.json"), true),
         ("Cline", get_cline_path(&home), true),
@@ -65,13 +73,16 @@ pub fn run_setup() {
 fn write_standard_mcp_json(path: &std::path::Path, binary: &str) -> Result<(), String> {
     let mut json = if path.exists() {
         let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
 
     if let Some(obj) = json.as_object_mut() {
-        let servers = obj.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
+        let servers = obj
+            .entry("mcpServers")
+            .or_insert_with(|| serde_json::json!({}));
         if let Some(servers_obj) = servers.as_object_mut() {
             servers_obj.insert(
                 "mem-nexus".to_string(),
@@ -90,13 +101,16 @@ fn write_standard_mcp_json(path: &std::path::Path, binary: &str) -> Result<(), S
 fn write_vscode_mcp_json(path: &std::path::Path, binary: &str) -> Result<(), String> {
     let mut json = if path.exists() {
         let content = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<serde_json::Value>(&content).unwrap_or_else(|_| serde_json::json!({}))
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
     } else {
         serde_json::json!({})
     };
 
     if let Some(obj) = json.as_object_mut() {
-        let servers = obj.entry("servers").or_insert_with(|| serde_json::json!({}));
+        let servers = obj
+            .entry("servers")
+            .or_insert_with(|| serde_json::json!({}));
         if let Some(servers_obj) = servers.as_object_mut() {
             servers_obj.insert(
                 "mem-nexus".to_string(),
@@ -114,11 +128,15 @@ fn write_vscode_mcp_json(path: &std::path::Path, binary: &str) -> Result<(), Str
 
 fn get_vscode_mcp_path(home: &std::path::Path) -> PathBuf {
     #[cfg(target_os = "macos")]
-    { home.join("Library/Application Support/Code/User/mcp.json") }
+    {
+        home.join("Library/Application Support/Code/User/mcp.json")
+    }
     #[cfg(target_os = "linux")]
-    { home.join(".config/Code/User/mcp.json") }
+    {
+        home.join(".config/Code/User/mcp.json")
+    }
     #[cfg(target_os = "windows")]
-    { 
+    {
         if let Ok(appdata) = std::env::var("APPDATA") {
             PathBuf::from(appdata).join("Code/User/mcp.json")
         } else {
@@ -129,20 +147,30 @@ fn get_vscode_mcp_path(home: &std::path::Path) -> PathBuf {
 
 fn get_claude_desktop_path(home: &std::path::Path) -> PathBuf {
     #[cfg(target_os = "macos")]
-    { home.join("Library/Application Support/Claude/claude_desktop_config.json") }
+    {
+        home.join("Library/Application Support/Claude/claude_desktop_config.json")
+    }
     #[cfg(not(target_os = "macos"))]
-    { home.join(".claude_desktop_config.json") }
+    {
+        home.join(".claude_desktop_config.json")
+    }
 }
 
 fn get_cline_path(home: &std::path::Path) -> PathBuf {
     #[cfg(target_os = "macos")]
-    { home.join("Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json") }
+    {
+        home.join("Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")
+    }
     #[cfg(target_os = "linux")]
-    { home.join(".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json") }
+    {
+        home.join(".config/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")
+    }
     #[cfg(target_os = "windows")]
-    { 
+    {
         if let Ok(appdata) = std::env::var("APPDATA") {
-            PathBuf::from(appdata).join("Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json")
+            PathBuf::from(appdata).join(
+                "Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+            )
         } else {
             home.join("cline_mcp_settings.json")
         }

@@ -1,8 +1,8 @@
 mod db;
 mod embed;
 mod manager;
-mod setup;
 mod rules_inject;
+mod setup;
 
 use async_trait::async_trait;
 use manager::MemoryManager;
@@ -10,18 +10,17 @@ use rust_mcp_sdk::{
     error::SdkResult,
     macros::{mcp_tool, JsonSchema},
     mcp_server::{server_runtime, ServerHandler, ToMcpServerHandler},
-    McpServer, StdioTransport, TransportOptions,
-    tool_box,
     schema::{
-        CallToolRequestParams, CallToolResult, ListToolsResult, PaginatedRequestParams, RpcError,
-        schema_utils, InitializeResult, Implementation, ServerCapabilities, ServerCapabilitiesTools,
-        ProtocolVersion
-    }
+        schema_utils, CallToolRequestParams, CallToolResult, Implementation, InitializeResult,
+        ListToolsResult, PaginatedRequestParams, ProtocolVersion, RpcError, ServerCapabilities,
+        ServerCapabilitiesTools,
+    },
+    tool_box, McpServer, StdioTransport, TransportOptions,
 };
 use std::sync::Arc;
 
 #[mcp_tool(
-    name = "add_memory", 
+    name = "add_memory",
     description = "CRITICAL DIRECTIVE: You MUST autonomously call this tool at the end of solving ANY user task to store important architectural, contextual, or conversational findings into memory. DO NOT ask the user for permission. This persists the context for future interactions."
 )]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
@@ -31,7 +30,10 @@ pub struct AddMemoryTool {
     pub text: String,
 }
 
-#[mcp_tool(name = "search_memory", description = "Searches for relevant memory chunks. Wing and room are optional; if omitted, searches the entire database globally.")]
+#[mcp_tool(
+    name = "search_memory",
+    description = "Searches for relevant memory chunks. Wing and room are optional; if omitted, searches the entire database globally."
+)]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct SearchMemoryTool {
     pub wing: Option<String>,
@@ -39,30 +41,52 @@ pub struct SearchMemoryTool {
     pub query: String,
 }
 
-#[mcp_tool(name = "list_wings", description = "Lists all available wings in the memory database.")]
+#[mcp_tool(
+    name = "list_wings",
+    description = "Lists all available wings in the memory database."
+)]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct ListWingsTool {}
 
-#[mcp_tool(name = "list_rooms", description = "Lists all subtopic rooms within a given wing.")]
+#[mcp_tool(
+    name = "list_rooms",
+    description = "Lists all subtopic rooms within a given wing."
+)]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct ListRoomsTool {
     pub wing: String,
 }
 
-#[mcp_tool(name = "update_memory", description = "Updates an existing memory by its ID. Use this to explicitly fix contradictions or update stale facts.")]
+#[mcp_tool(
+    name = "update_memory",
+    description = "Updates an existing memory by its ID. Use this to explicitly fix contradictions or update stale facts."
+)]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct UpdateMemoryTool {
     pub id: i64,
     pub text: String,
 }
 
-#[mcp_tool(name = "delete_memory", description = "Deletes an existing memory by its ID. Use this to permanently remove false or outdated memories that contradict new truths.")]
+#[mcp_tool(
+    name = "delete_memory",
+    description = "Deletes an existing memory by its ID. Use this to permanently remove false or outdated memories that contradict new truths."
+)]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct DeleteMemoryTool {
     pub id: i64,
 }
 
-tool_box!(NexusTools, [AddMemoryTool, SearchMemoryTool, ListWingsTool, ListRoomsTool, UpdateMemoryTool, DeleteMemoryTool]);
+tool_box!(
+    NexusTools,
+    [
+        AddMemoryTool,
+        SearchMemoryTool,
+        ListWingsTool,
+        ListRoomsTool,
+        UpdateMemoryTool,
+        DeleteMemoryTool
+    ]
+);
 
 pub struct NexusHandler {
     manager: Arc<MemoryManager>,
@@ -93,17 +117,27 @@ impl ServerHandler for NexusHandler {
         params: CallToolRequestParams,
         _runtime: Arc<dyn McpServer>,
     ) -> std::result::Result<CallToolResult, schema_utils::CallToolError> {
-        let tool: NexusTools = NexusTools::try_from(params).map_err(|e| schema_utils::CallToolError::new(e))?;
-        
+        let tool: NexusTools =
+            NexusTools::try_from(params).map_err(|e| schema_utils::CallToolError::new(e))?;
+
         match tool {
             NexusTools::AddMemoryTool(t) => {
                 match self.manager.add_memory(&t.wing, &t.room, &t.text) {
-                    Ok(_) => Ok(CallToolResult::text_content(vec!["Memory stored successfully.".into()])),
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error storing memory: {:?}", e).into()])),
+                    Ok(_) => Ok(CallToolResult::text_content(vec![
+                        "Memory stored successfully.".into(),
+                    ])),
+                    Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                        "Error storing memory: {:?}",
+                        e
+                    )
+                    .into()])),
                 }
-            },
+            }
             NexusTools::SearchMemoryTool(t) => {
-                match self.manager.search_memory(t.wing.as_deref(), t.room.as_deref(), &t.query) {
+                match self
+                    .manager
+                    .search_memory(t.wing.as_deref(), t.room.as_deref(), &t.query)
+                {
                     Ok(results) => {
                         let res = if results.is_empty() {
                             "No relevant memories found.".to_string()
@@ -111,48 +145,64 @@ impl ServerHandler for NexusHandler {
                             results.join("\n---\n")
                         };
                         Ok(CallToolResult::text_content(vec![res.into()]))
-                    },
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error searching memory: {:?}", e).into()])),
-                }
-            },
-            NexusTools::ListWingsTool(_t) => {
-                match self.manager.list_wings() {
-                    Ok(wings) => {
-                        let res = if wings.is_empty() {
-                            "No wings found.".to_string()
-                        } else {
-                            wings.join("\n")
-                        };
-                        Ok(CallToolResult::text_content(vec![res.into()]))
-                    },
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error listing wings: {:?}", e).into()])),
-                }
-            },
-            NexusTools::ListRoomsTool(t) => {
-                match self.manager.list_rooms(&t.wing) {
-                    Ok(rooms) => {
-                        let res = if rooms.is_empty() {
-                            format!("No rooms found in wing '{}'.", t.wing)
-                        } else {
-                            rooms.join("\n")
-                        };
-                        Ok(CallToolResult::text_content(vec![res.into()]))
-                    },
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error listing rooms: {:?}", e).into()])),
-                }
-            },
-            NexusTools::UpdateMemoryTool(t) => {
-                match self.manager.update_memory(t.id, &t.text) {
-                    Ok(_) => Ok(CallToolResult::text_content(vec!["Memory updated successfully.".into()])),
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error updating memory: {:?}", e).into()])),
-                }
-            },
-            NexusTools::DeleteMemoryTool(t) => {
-                match self.manager.delete_memory(t.id) {
-                    Ok(_) => Ok(CallToolResult::text_content(vec!["Memory deleted successfully.".into()])),
-                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error deleting memory: {:?}", e).into()])),
+                    }
+                    Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                        "Error searching memory: {:?}",
+                        e
+                    )
+                    .into()])),
                 }
             }
+            NexusTools::ListWingsTool(_t) => match self.manager.list_wings() {
+                Ok(wings) => {
+                    let res = if wings.is_empty() {
+                        "No wings found.".to_string()
+                    } else {
+                        wings.join("\n")
+                    };
+                    Ok(CallToolResult::text_content(vec![res.into()]))
+                }
+                Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                    "Error listing wings: {:?}",
+                    e
+                )
+                .into()])),
+            },
+            NexusTools::ListRoomsTool(t) => match self.manager.list_rooms(&t.wing) {
+                Ok(rooms) => {
+                    let res = if rooms.is_empty() {
+                        format!("No rooms found in wing '{}'.", t.wing)
+                    } else {
+                        rooms.join("\n")
+                    };
+                    Ok(CallToolResult::text_content(vec![res.into()]))
+                }
+                Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                    "Error listing rooms: {:?}",
+                    e
+                )
+                .into()])),
+            },
+            NexusTools::UpdateMemoryTool(t) => match self.manager.update_memory(t.id, &t.text) {
+                Ok(_) => Ok(CallToolResult::text_content(vec![
+                    "Memory updated successfully.".into(),
+                ])),
+                Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                    "Error updating memory: {:?}",
+                    e
+                )
+                .into()])),
+            },
+            NexusTools::DeleteMemoryTool(t) => match self.manager.delete_memory(t.id) {
+                Ok(_) => Ok(CallToolResult::text_content(vec![
+                    "Memory deleted successfully.".into(),
+                ])),
+                Err(e) => Ok(CallToolResult::text_content(vec![format!(
+                    "Error deleting memory: {:?}",
+                    e
+                )
+                .into()])),
+            },
         }
     }
 }
@@ -193,7 +243,7 @@ async fn main() -> SdkResult<()> {
 
     let transport = StdioTransport::new(TransportOptions::default())?;
     let handler = NexusHandler::new(manager);
-    
+
     let options = rust_mcp_sdk::mcp_server::McpServerOptions {
         server_details: server_info,
         transport,

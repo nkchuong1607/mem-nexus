@@ -37,18 +37,25 @@ pub fn inject_all_rules(home: &std::path::Path) {
             // Copilot instructions normally sit here
             path: {
                 #[cfg(target_os = "macos")]
-                { home.join("Library/Application Support/Code/User/github-copilot-instructions.md") }
+                {
+                    home.join(
+                        "Library/Application Support/Code/User/github-copilot-instructions.md",
+                    )
+                }
                 #[cfg(target_os = "linux")]
-                { home.join(".config/Code/User/github-copilot-instructions.md") }
+                {
+                    home.join(".config/Code/User/github-copilot-instructions.md")
+                }
                 #[cfg(target_os = "windows")]
-                { 
+                {
                     if let Ok(appdata) = std::env::var("APPDATA") {
-                        std::path::PathBuf::from(appdata).join("Code/User/github-copilot-instructions.md")
+                        std::path::PathBuf::from(appdata)
+                            .join("Code/User/github-copilot-instructions.md")
                     } else {
                         home.join(".config/Code/User/github-copilot-instructions.md")
                     }
                 }
-            }
+            },
         },
     ];
 
@@ -69,7 +76,7 @@ pub fn inject_all_rules(home: &std::path::Path) {
 
             if root_exists {
                 let _ = std::fs::create_dir_all(parent);
-                
+
                 let mut content = if target.path.exists() {
                     std::fs::read_to_string(&target.path).unwrap_or_default()
                 } else {
@@ -80,11 +87,11 @@ pub fn inject_all_rules(home: &std::path::Path) {
                     if !content.is_empty() && !content.ends_with('\n') {
                         content.push('\n');
                     }
-                    
+
                     if target.name == "Cursor" && !content.contains("alwaysApply: true") {
                         content.push_str("---\ndescription: \"Mem-Nexus: Autonomous persistent memory saving\"\nalwaysApply: true\n---\n\n");
                     }
-                    
+
                     content.push_str(RULES_PSYCH);
                     let _ = std::fs::write(&target.path, content);
                     println!("Injected mem-nexus rules for {}", target.name);

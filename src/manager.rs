@@ -49,7 +49,7 @@ impl MemoryManager {
         let embedding = self.embedder.embed(text)?;
 
         let conn = self.conn.lock().unwrap();
-        
+
         // 1. Deduplication Engine (>95% cosine similarity)
         let mut stmt = conn.prepare("SELECT id, embedding FROM memories WHERE room_id = ?1")?;
         let rows = stmt.query_map(params![room_id], |row| {
@@ -132,7 +132,12 @@ impl MemoryManager {
         Ok(())
     }
 
-    pub fn search_memory(&self, wing: Option<&str>, room: Option<&str>, query: &str) -> anyhow::Result<Vec<String>> {
+    pub fn search_memory(
+        &self,
+        wing: Option<&str>,
+        room: Option<&str>,
+        query: &str,
+    ) -> anyhow::Result<Vec<String>> {
         let query_embedding = self.embedder.embed(query)?;
 
         let conn = self.conn.lock().unwrap();
@@ -154,14 +159,19 @@ impl MemoryManager {
 
         // 1. FTS5 Keyword Overlap scoring
         let query_keywords = extract_keywords(query);
-        let mut keyword_hits: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
-        
+        let mut keyword_hits: std::collections::HashMap<i64, f32> =
+            std::collections::HashMap::new();
+
         if !query_keywords.is_empty() {
             // Escape each keyword in double quotes to prevent FTS5 syntax errors with reserved keywords
-            let fts_terms: Vec<String> = query_keywords.iter().map(|k| format!("\"{}\"", k)).collect();
+            let fts_terms: Vec<String> = query_keywords
+                .iter()
+                .map(|k| format!("\"{}\"", k))
+                .collect();
             let fts_match = fts_terms.join(" OR ");
-            
-            let fts_sql = "SELECT rowid, bm25(memories_fts) FROM memories_fts WHERE memories_fts MATCH ?1";
+
+            let fts_sql =
+                "SELECT rowid, bm25(memories_fts) FROM memories_fts WHERE memories_fts MATCH ?1";
             if let Ok(mut stmt) = conn.prepare(fts_sql) {
                 if let Ok(rows) = stmt.query_map(params![fts_match], |row| {
                     let id: i64 = row.get(0)?;
@@ -179,7 +189,10 @@ impl MemoryManager {
         }
 
         // 2. Fetch Vectors & Merge Semantic Overlap
-        let sql = format!("SELECT id, content, embedding, created_at FROM memories {}", room_filter);
+        let sql = format!(
+            "SELECT id, content, embedding, created_at FROM memories {}",
+            room_filter
+        );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             let id: i64 = row.get(0)?;
@@ -199,7 +212,7 @@ impl MemoryManager {
         for r in rows {
             let (id, content, embedding, created_at) = r?;
             let mut similarity = cosine_similarity(&query_embedding, &embedding);
-            
+
             // Apply Hybrid Scoring: Use FTS5 hit instead of slow string loop check
             let overlap = keyword_hits.get(&id).unwrap_or(&0.0);
             if *overlap > 0.0 {
@@ -222,7 +235,9 @@ impl MemoryManager {
         let mut stmt = conn.prepare("SELECT name FROM wings")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut res = vec![];
-        for r in rows { res.push(r?); }
+        for r in rows {
+            res.push(r?);
+        }
         Ok(res)
     }
 
@@ -231,7 +246,9 @@ impl MemoryManager {
         let mut stmt = conn.prepare("SELECT rooms.name FROM rooms JOIN wings ON wings.id = rooms.wing_id WHERE wings.name = ?1")?;
         let rows = stmt.query_map(params![wing], |row| row.get(0))?;
         let mut res = vec![];
-        for r in rows { res.push(r?); }
+        for r in rows {
+            res.push(r?);
+        }
         Ok(res)
     }
 }
@@ -270,11 +287,15 @@ mod tests {
     #[test]
     fn test_deduplication() {
         let mgr = setup_manager();
-        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.").unwrap();
-        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.").unwrap(); // Duplicate
-        
+        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.")
+            .unwrap();
+        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.")
+            .unwrap(); // Duplicate
+
         let conn = mgr.conn.lock().unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(count, 1, "Duplicate memory should not increase total count");
     }
 
@@ -282,25 +303,39 @@ mod tests {
     fn test_global_routing() {
         let mgr = setup_manager();
         mgr.add_memory("wingA", "roomA", "Apples are red.").unwrap();
-        mgr.add_memory("wingB", "roomB", "Bananas are yellow.").unwrap();
+        mgr.add_memory("wingB", "roomB", "Bananas are yellow.")
+            .unwrap();
 
         // Scope restrict query
-        let res1 = mgr.search_memory(Some("wingA"), Some("roomA"), "Apples").unwrap();
+        let res1 = mgr
+            .search_memory(Some("wingA"), Some("roomA"), "Apples")
+            .unwrap();
         assert_eq!(res1.len(), 1);
 
         // Global query
         let res2 = mgr.search_memory(None, None, "red yellow").unwrap();
-        assert_eq!(res2.len(), 2, "Global routing should locate memories from both wings");
+        assert_eq!(
+            res2.len(),
+            2,
+            "Global routing should locate memories from both wings"
+        );
     }
 
     #[test]
     fn test_fts5_indexing() {
         let mgr = setup_manager();
-        mgr.add_memory("test", "test", "UniqueKeywordAlpha match setup.").unwrap();
-        
+        mgr.add_memory("test", "test", "UniqueKeywordAlpha match setup.")
+            .unwrap();
+
         // Assert FTS table synced automatically
         let conn = mgr.conn.lock().unwrap();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM memories_fts WHERE memories_fts MATCH 'UniqueKeywordAlpha'", [], |r| r.get(0)).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM memories_fts WHERE memories_fts MATCH 'UniqueKeywordAlpha'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(count, 1, "FTS5 trigger failed to sync memory insertion");
     }
 }

@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
-use std::path::Path;
-use std::time::Instant;
 use reqwest;
 use serde::Deserialize;
 use std::fs;
+use std::path::Path;
+use std::time::Instant;
 
 #[path = "../src/db.rs"]
 mod db;
@@ -45,10 +45,18 @@ fn val_to_str(v: &serde_json::Value) -> String {
     }
 }
 
-fn run_query(manager: &MemoryManager, entry: &LongMemEvalEntry, wing_name: &str) -> anyhow::Result<(bool, bool)> {
-    let target_answers: Vec<String> = entry.answer_session_ids.iter().map(|v| val_to_str(v)).collect();
+fn run_query(
+    manager: &MemoryManager,
+    entry: &LongMemEvalEntry,
+    wing_name: &str,
+) -> anyhow::Result<(bool, bool)> {
+    let target_answers: Vec<String> = entry
+        .answer_session_ids
+        .iter()
+        .map(|v| val_to_str(v))
+        .collect();
     let results = manager.search_memory(Some(wing_name), Some("global_room"), &entry.question)?;
-    
+
     let mut found_targets = std::collections::HashSet::new();
     for retrieved in results {
         if let Some(start) = retrieved.find("[SESSION_ID:") {
@@ -61,7 +69,7 @@ fn run_query(manager: &MemoryManager, entry: &LongMemEvalEntry, wing_name: &str)
             }
         }
     }
-    
+
     let mut hit_any = false;
     let mut hit_all = false;
     if found_targets.len() > 0 {
@@ -76,7 +84,7 @@ fn run_query(manager: &MemoryManager, entry: &LongMemEvalEntry, wing_name: &str)
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let data_path = "/tmp/longmemeval_s_cleaned.json";
-    
+
     if !Path::new(data_path).exists() {
         println!("Downloading LongMemEval dataset...");
         let url = "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json";
@@ -99,7 +107,7 @@ async fn main() -> anyhow::Result<()> {
         println!("🚀 Running in GLOBAL CORPUS mode. Ingesting ALL sessions into one database...");
         let manager = MemoryManager::new(":memory:")?;
         let mut ingested_sids = std::collections::HashSet::new();
-        
+
         for entry in &entries {
             for (session_idx, session_turns) in entry.haystack_sessions.iter().enumerate() {
                 let sess_id = val_to_str(&entry.haystack_session_ids[session_idx]);
@@ -107,7 +115,9 @@ async fn main() -> anyhow::Result<()> {
                     let mut user_text = String::new();
                     for turn in session_turns {
                         if turn.role == "user" {
-                            if !user_text.is_empty() { user_text.push('\n'); }
+                            if !user_text.is_empty() {
+                                user_text.push('\n');
+                            }
                             user_text.push_str(&turn.content);
                         }
                     }
@@ -118,13 +128,16 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        println!("✅ Global corpus ingested ({} unique sessions). Starting queries...", ingested_sids.len());
+        println!(
+            "✅ Global corpus ingested ({} unique sessions). Starting queries...",
+            ingested_sids.len()
+        );
         global_manager = Some(manager);
     }
 
     let mut hit_any_at_5 = 0;
     let mut hit_all_at_5 = 0;
-    
+
     let start_time = Instant::now();
 
     for (i, entry) in entries.iter().enumerate() {
@@ -138,11 +151,13 @@ async fn main() -> anyhow::Result<()> {
                 let mut user_text = String::new();
                 for turn in session_turns {
                     if turn.role == "user" {
-                        if !user_text.is_empty() { user_text.push('\n'); }
+                        if !user_text.is_empty() {
+                            user_text.push('\n');
+                        }
                         user_text.push_str(&turn.content);
                     }
                 }
-                
+
                 if !user_text.is_empty() {
                     let stored_text = format!("[SESSION_ID:{}]\n{}", sess_id, user_text);
                     local_mgr.add_memory_benchmark(wing_name, "global_room", &stored_text)?;
@@ -151,23 +166,50 @@ async fn main() -> anyhow::Result<()> {
             run_query(&local_mgr, entry, wing_name)?
         };
 
-        if hit_any { hit_any_at_5 += 1; }
-        if hit_all { hit_all_at_5 += 1; }
-        
-        println!("Completed query {}/{}: ANY={}, ALL={}", i + 1, entries.len(), hit_any, hit_all);
+        if hit_any {
+            hit_any_at_5 += 1;
+        }
+        if hit_all {
+            hit_all_at_5 += 1;
+        }
+
+        println!(
+            "Completed query {}/{}: ANY={}, ALL={}",
+            i + 1,
+            entries.len(),
+            hit_any,
+            hit_all
+        );
     }
-    
+
     let end_time = start_time.elapsed();
     let recall_any = (hit_any_at_5 as f64 / entries.len() as f64) * 100.0;
     let recall_all = (hit_all_at_5 as f64 / entries.len() as f64) * 100.0;
-    
+
     println!("---");
     println!("Benchmark Completed.");
-    println!("Mode: {}", if global_corpus_mode { "Global Corpus (Hard)" } else { "Per-Question (Easy/Baseline)" });
+    println!(
+        "Mode: {}",
+        if global_corpus_mode {
+            "Global Corpus (Hard)"
+        } else {
+            "Per-Question (Easy/Baseline)"
+        }
+    );
     println!("Time taken: {:.2?}", end_time);
     println!("Time per query: {:.2?}", end_time / entries.len() as u32);
-    println!("Final Recall_Any@5: {:.2}% ({}/{}) [Optimistic]", recall_any, hit_any_at_5, entries.len());
-    println!("Final Recall_All@5: {:.2}% ({}/{}) [Strict]", recall_all, hit_all_at_5, entries.len());
+    println!(
+        "Final Recall_Any@5: {:.2}% ({}/{}) [Optimistic]",
+        recall_any,
+        hit_any_at_5,
+        entries.len()
+    );
+    println!(
+        "Final Recall_All@5: {:.2}% ({}/{}) [Strict]",
+        recall_all,
+        hit_all_at_5,
+        entries.len()
+    );
     println!("---");
 
     Ok(())

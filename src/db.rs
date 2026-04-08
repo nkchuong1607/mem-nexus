@@ -2,7 +2,7 @@ use rusqlite::{Connection, Result};
 
 pub fn init_db(path: &str) -> Result<Connection> {
     let conn = Connection::open(path)?;
-    
+
     conn.execute(
         "CREATE TABLE IF NOT EXISTS wings (
             id INTEGER PRIMARY KEY,
