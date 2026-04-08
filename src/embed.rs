@@ -14,6 +14,7 @@ impl Embedder {
         
         let mut options: InitOptions = Default::default();
         options.cache_dir = cache_dir;
+        options.show_download_progress = false;
 
         let model = TextEmbedding::try_new(options)?;
         Ok(Self { model: Mutex::new(model) })
