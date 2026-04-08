@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 use criterion::{criterion_group, criterion_main, Criterion, BatchSize};
 use rusqlite::Connection;
 
@@ -23,7 +25,7 @@ fn bench_ingestion(c: &mut Criterion) {
 }
 
 fn bench_search(c: &mut Criterion) {
-    let mut manager = MemoryManager::new(":memory:").unwrap();
+    let manager = MemoryManager::new(":memory:").unwrap();
     // Seed with 100 entries
     for i in 0..100 {
         manager.add_memory("bench_wing", "bench_room", &format!("Context memory chunk number {}", i)).unwrap();
@@ -31,7 +33,7 @@ fn bench_search(c: &mut Criterion) {
     
     c.bench_function("search_100_memories", |b| {
         b.iter(|| {
-            manager.search_memory("bench_wing", "bench_room", "querying for chunk 55")
+            manager.search_memory(Some("bench_wing"), Some("bench_room"), "querying for chunk 55")
         })
     });
 }

@@ -2,6 +2,7 @@
 name = "mem-nexus"
 version = "0.1.0"
 edition = "2021"
+autobenches = false
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

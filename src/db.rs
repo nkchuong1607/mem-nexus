@@ -35,5 +35,36 @@ pub fn init_db(path: &str) -> Result<Connection> {
         [],
     )?;
 
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+            content,
+            content='memories',
+            content_rowid='id'
+        )",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+            INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+        END;",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+        END;",
+        [],
+    )?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories BEGIN
+            INSERT INTO memories_fts(memories_fts, rowid, content) VALUES('delete', old.id, old.content);
+            INSERT INTO memories_fts(rowid, content) VALUES (new.id, new.content);
+        END;",
+        [],
+    )?;
+
     Ok(conn)
 }

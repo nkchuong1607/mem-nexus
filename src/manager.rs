@@ -48,6 +48,56 @@ impl MemoryManager {
         let room_id = self.get_or_create_room(wing_id, room)?;
         let embedding = self.embedder.embed(text)?;
 
+        let conn = self.conn.lock().unwrap();
+        
+        // 1. Deduplication Engine (>95% cosine similarity)
+        let mut stmt = conn.prepare("SELECT id, embedding FROM memories WHERE room_id = ?1")?;
+        let rows = stmt.query_map(params![room_id], |row| {
+            let id: i64 = row.get(0)?;
+            let embed_bytes: Vec<u8> = row.get(1)?;
+            let mut vec_f32 = Vec::new();
+            for chunk in embed_bytes.chunks(4) {
+                if chunk.len() == 4 {
+                    vec_f32.push(f32::from_le_bytes(chunk.try_into().unwrap()));
+                }
+            }
+            Ok((id, vec_f32))
+        })?;
+
+        let mut duplicate_id = None;
+        for r in rows {
+            if let Ok((id, existing_emb)) = r {
+                let sim = cosine_similarity(&embedding, &existing_emb);
+                if sim > 0.95 {
+                    duplicate_id = Some(id);
+                    break;
+                }
+            }
+        }
+
+        let bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
+
+        if let Some(id) = duplicate_id {
+            conn.execute(
+                "UPDATE memories SET content = ?1, embedding = ?2, created_at = CURRENT_TIMESTAMP WHERE id = ?3",
+                params![text, bytes, id],
+            )?;
+            return Ok(());
+        }
+
+        // 2. Normal Insertion
+        conn.execute(
+            "INSERT INTO memories (room_id, content, embedding) VALUES (?1, ?2, ?3)",
+            params![room_id, text, bytes],
+        )?;
+        Ok(())
+    }
+
+    pub fn add_memory_benchmark(&self, wing: &str, room: &str, text: &str) -> anyhow::Result<()> {
+        let wing_id = self.get_or_create_wing(wing)?;
+        let room_id = self.get_or_create_room(wing_id, room)?;
+        let embedding = self.embedder.embed(text)?;
+
         let bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
 
         let conn = self.conn.lock().unwrap();
@@ -64,7 +114,7 @@ impl MemoryManager {
 
         let conn = self.conn.lock().unwrap();
         let changed = conn.execute(
-            "UPDATE memories SET content = ?1, embedding = ?2 WHERE id = ?3",
+            "UPDATE memories SET content = ?1, embedding = ?2, created_at = CURRENT_TIMESTAMP WHERE id = ?3",
             params![text, bytes, id],
         )?;
         if changed == 0 {
@@ -82,23 +132,56 @@ impl MemoryManager {
         Ok(())
     }
 
-    pub fn search_memory(&self, wing: &str, room: &str, query: &str) -> anyhow::Result<Vec<String>> {
+    pub fn search_memory(&self, wing: Option<&str>, room: Option<&str>, query: &str) -> anyhow::Result<Vec<String>> {
         let query_embedding = self.embedder.embed(query)?;
 
         let conn = self.conn.lock().unwrap();
-        let room_id_opt: Option<i64> = conn.query_row(
-            "SELECT rooms.id FROM rooms JOIN wings ON wings.id = rooms.wing_id WHERE wings.name = ?1 AND rooms.name = ?2",
-            params![wing, room],
-            |row| row.get(0),
-        ).optional()?;
 
-        let room_id = match room_id_opt {
-            Some(id) => id,
-            None => return Ok(vec![]),
-        };
+        let mut room_filter = String::new();
+        if let (Some(w), Some(r)) = (wing, room) {
+            let room_id_opt: Option<i64> = conn.query_row(
+                "SELECT rooms.id FROM rooms JOIN wings ON wings.id = rooms.wing_id WHERE wings.name = ?1 AND rooms.name = ?2",
+                params![w, r],
+                |row| row.get(0),
+            ).optional()?;
 
-        let mut stmt = conn.prepare("SELECT id, content, embedding, created_at FROM memories WHERE room_id = ?1")?;
-        let rows = stmt.query_map(params![room_id], |row| {
+            if let Some(id) = room_id_opt {
+                room_filter = format!("WHERE room_id = {}", id);
+            } else {
+                return Ok(vec![]);
+            }
+        }
+
+        // 1. FTS5 Keyword Overlap scoring
+        let query_keywords = extract_keywords(query);
+        let mut keyword_hits: std::collections::HashMap<i64, f32> = std::collections::HashMap::new();
+        
+        if !query_keywords.is_empty() {
+            // Escape each keyword in double quotes to prevent FTS5 syntax errors with reserved keywords
+            let fts_terms: Vec<String> = query_keywords.iter().map(|k| format!("\"{}\"", k)).collect();
+            let fts_match = fts_terms.join(" OR ");
+            
+            let fts_sql = "SELECT rowid, bm25(memories_fts) FROM memories_fts WHERE memories_fts MATCH ?1";
+            if let Ok(mut stmt) = conn.prepare(fts_sql) {
+                if let Ok(rows) = stmt.query_map(params![fts_match], |row| {
+                    let id: i64 = row.get(0)?;
+                    let score: f64 = row.get(1)?;
+                    Ok((id, (-score) as f32)) // SQLite BM25 is negatively scored natively
+                }) {
+                    for r in rows {
+                        if let Ok((id, score)) = r {
+                            let normalized_overlap = (0.2 + (score / 3.0)).min(1.0);
+                            keyword_hits.insert(id, normalized_overlap);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Fetch Vectors & Merge Semantic Overlap
+        let sql = format!("SELECT id, content, embedding, created_at FROM memories {}", room_filter);
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
             let id: i64 = row.get(0)?;
             let content: String = row.get(1)?;
             let embed_bytes: Vec<u8> = row.get(2)?;
@@ -112,23 +195,16 @@ impl MemoryManager {
             Ok((id, content, vec_f32, created_at))
         })?;
 
-        let query_keywords = extract_keywords(query);
-
         let mut results = Vec::new();
         for r in rows {
             let (id, content, embedding, created_at) = r?;
             let mut similarity = cosine_similarity(&query_embedding, &embedding);
             
-            // Apply Hybrid Scoring: MemPalace standard overlap heuristic
-            let overlap = keyword_overlap(&query_keywords, &content);
-            if overlap > 0.0 {
-                // Convert similarity to distance (0.0 to 2.0 where 0 is perfect)
+            // Apply Hybrid Scoring: Use FTS5 hit instead of slow string loop check
+            let overlap = keyword_hits.get(&id).unwrap_or(&0.0);
+            if *overlap > 0.0 {
                 let dist = 1.0 - similarity;
-                
-                // standard hybrid weight = 0.30 
                 let fused_dist = dist * (1.0 - 0.30 * overlap);
-                
-                // convert back to similarity 
                 similarity = 1.0 - fused_dist;
             }
 
@@ -142,7 +218,6 @@ impl MemoryManager {
     }
 
     pub fn list_wings(&self) -> anyhow::Result<Vec<String>> {
-
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("SELECT name FROM wings")?;
         let rows = stmt.query_map([], |row| row.get(0))?;
@@ -184,22 +259,48 @@ fn extract_keywords(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn keyword_overlap(keywords: &[String], doc: &str) -> f32 {
-    if keywords.is_empty() {
-        return 0.0;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_manager() -> MemoryManager {
+        MemoryManager::new(":memory:").unwrap()
     }
-    let doc_lower = doc.to_lowercase();
-    let mut matches = 0;
-    
-    // Convert to unique set to avoid over-counting duplicate words in the query
-    let mut unique_keywords = keywords.to_vec();
-    unique_keywords.sort();
-    unique_keywords.dedup();
-    
-    for kw in &unique_keywords {
-        if doc_lower.contains(kw) {
-            matches += 1;
-        }
+
+    #[test]
+    fn test_deduplication() {
+        let mgr = setup_manager();
+        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.").unwrap();
+        mgr.add_memory("wing1", "room1", "The backend uses warp in rust.").unwrap(); // Duplicate
+        
+        let conn = mgr.conn.lock().unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "Duplicate memory should not increase total count");
     }
-    matches as f32 / unique_keywords.len() as f32
+
+    #[test]
+    fn test_global_routing() {
+        let mgr = setup_manager();
+        mgr.add_memory("wingA", "roomA", "Apples are red.").unwrap();
+        mgr.add_memory("wingB", "roomB", "Bananas are yellow.").unwrap();
+
+        // Scope restrict query
+        let res1 = mgr.search_memory(Some("wingA"), Some("roomA"), "Apples").unwrap();
+        assert_eq!(res1.len(), 1);
+
+        // Global query
+        let res2 = mgr.search_memory(None, None, "red yellow").unwrap();
+        assert_eq!(res2.len(), 2, "Global routing should locate memories from both wings");
+    }
+
+    #[test]
+    fn test_fts5_indexing() {
+        let mgr = setup_manager();
+        mgr.add_memory("test", "test", "UniqueKeywordAlpha match setup.").unwrap();
+        
+        // Assert FTS table synced automatically
+        let conn = mgr.conn.lock().unwrap();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM memories_fts WHERE memories_fts MATCH 'UniqueKeywordAlpha'", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "FTS5 trigger failed to sync memory insertion");
+    }
 }

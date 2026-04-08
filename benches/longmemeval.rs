@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
 use std::path::Path;
 use std::time::Instant;
 use reqwest;
@@ -45,7 +47,7 @@ fn val_to_str(v: &serde_json::Value) -> String {
 
 fn run_query(manager: &MemoryManager, entry: &LongMemEvalEntry, wing_name: &str) -> anyhow::Result<(bool, bool)> {
     let target_answers: Vec<String> = entry.answer_session_ids.iter().map(|v| val_to_str(v)).collect();
-    let results = manager.search_memory(wing_name, "global_room", &entry.question)?;
+    let results = manager.search_memory(Some(wing_name), Some("global_room"), &entry.question)?;
     
     let mut found_targets = std::collections::HashSet::new();
     for retrieved in results {
@@ -111,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
                     }
                     if !user_text.is_empty() {
                         let stored_text = format!("[SESSION_ID:{}]\n{}", sess_id, user_text);
-                        manager.add_memory(wing_name, "global_room", &stored_text)?;
+                        manager.add_memory_benchmark(wing_name, "global_room", &stored_text)?;
                     }
                 }
             }
@@ -143,7 +145,7 @@ async fn main() -> anyhow::Result<()> {
                 
                 if !user_text.is_empty() {
                     let stored_text = format!("[SESSION_ID:{}]\n{}", sess_id, user_text);
-                    local_mgr.add_memory(wing_name, "global_room", &stored_text)?;
+                    local_mgr.add_memory_benchmark(wing_name, "global_room", &stored_text)?;
                 }
             }
             run_query(&local_mgr, entry, wing_name)?

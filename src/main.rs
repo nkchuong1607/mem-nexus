@@ -31,11 +31,11 @@ pub struct AddMemoryTool {
     pub text: String,
 }
 
-#[mcp_tool(name = "search_memory", description = "Searches for relevant memory chunks inside a specific wing and room using semantic search.")]
+#[mcp_tool(name = "search_memory", description = "Searches for relevant memory chunks. Wing and room are optional; if omitted, searches the entire database globally.")]
 #[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
 pub struct SearchMemoryTool {
-    pub wing: String,
-    pub room: String,
+    pub wing: Option<String>,
+    pub room: Option<String>,
     pub query: String,
 }
 
@@ -103,7 +103,7 @@ impl ServerHandler for NexusHandler {
                 }
             },
             NexusTools::SearchMemoryTool(t) => {
-                match self.manager.search_memory(&t.wing, &t.room, &t.query) {
+                match self.manager.search_memory(t.wing.as_deref(), t.room.as_deref(), &t.query) {
                     Ok(results) => {
                         let res = if results.is_empty() {
                             "No relevant memories found.".to_string()
