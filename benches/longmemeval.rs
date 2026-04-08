@@ -9,11 +9,11 @@ use std::fs;
 // or just include the modules here directly. Wait, better to put this in `src/bin/` and
 // expose modules in `src/lib.rs`.
 
-#[path = "../db.rs"]
+#[path = "../src/db.rs"]
 mod db;
-#[path = "../embed.rs"]
+#[path = "../src/embed.rs"]
 mod embed;
-#[path = "../manager.rs"]
+#[path = "../src/manager.rs"]
 mod manager;
 
 use manager::MemoryManager;

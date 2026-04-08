@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, Result};
 
 pub fn init_db(path: &str) -> Result<Connection> {
     let conn = Connection::open(path)?;
