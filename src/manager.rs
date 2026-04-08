@@ -58,6 +58,30 @@ impl MemoryManager {
         Ok(())
     }
 
+    pub fn update_memory(&self, id: i64, text: &str) -> anyhow::Result<()> {
+        let embedding = self.embedder.embed(text)?;
+        let bytes: Vec<u8> = embedding.iter().flat_map(|f| f.to_le_bytes()).collect();
+
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE memories SET content = ?1, embedding = ?2 WHERE id = ?3",
+            params![text, bytes, id],
+        )?;
+        if changed == 0 {
+            anyhow::bail!("Memory ID not found");
+        }
+        Ok(())
+    }
+
+    pub fn delete_memory(&self, id: i64) -> anyhow::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
+        if changed == 0 {
+            anyhow::bail!("Memory ID not found");
+        }
+        Ok(())
+    }
+
     pub fn search_memory(&self, wing: &str, room: &str, query: &str) -> anyhow::Result<Vec<String>> {
         let query_embedding = self.embedder.embed(query)?;
 
@@ -73,24 +97,26 @@ impl MemoryManager {
             None => return Ok(vec![]),
         };
 
-        let mut stmt = conn.prepare("SELECT content, embedding FROM memories WHERE room_id = ?1")?;
+        let mut stmt = conn.prepare("SELECT id, content, embedding, created_at FROM memories WHERE room_id = ?1")?;
         let rows = stmt.query_map(params![room_id], |row| {
-            let content: String = row.get(0)?;
-            let embed_bytes: Vec<u8> = row.get(1)?;
+            let id: i64 = row.get(0)?;
+            let content: String = row.get(1)?;
+            let embed_bytes: Vec<u8> = row.get(2)?;
+            let created_at: String = row.get(3)?;
             let mut vec_f32 = Vec::new();
             for chunk in embed_bytes.chunks(4) {
                 if chunk.len() == 4 {
                     vec_f32.push(f32::from_le_bytes(chunk.try_into().unwrap()));
                 }
             }
-            Ok((content, vec_f32))
+            Ok((id, content, vec_f32, created_at))
         })?;
 
         let query_keywords = extract_keywords(query);
 
         let mut results = Vec::new();
         for r in rows {
-            let (content, embedding) = r?;
+            let (id, content, embedding, created_at) = r?;
             let mut similarity = cosine_similarity(&query_embedding, &embedding);
             
             // Apply Hybrid Scoring: MemPalace standard overlap heuristic
@@ -106,7 +132,8 @@ impl MemoryManager {
                 similarity = 1.0 - fused_dist;
             }
 
-            results.push((content, similarity));
+            let formatted_content = format!("[ID={}] [TIME={}]: {}", id, created_at, content);
+            results.push((formatted_content, similarity));
         }
 
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));

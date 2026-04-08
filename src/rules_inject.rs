@@ -4,6 +4,9 @@ const RULES_PSYCH: &str = r#"# Mem-Nexus Auto-Save Protocol
 You have background access to a local memory server named `mem-nexus`.
 **You are forbidden to terminate complex user tasks without performing an auto-save.**
 At the very end of any successfully completed task or conversation, you MUST autonomously call the `add_memory` MCP tool to persist what was learned (architectural decisions, preferences, or major bugs fixed). Do not ask the user for permission. Just do it silently.
+
+**Managing Contradictions**:
+If you fetch memories using `search_memory` that are explicitly outdated or contradict a new truth established in the current session, you MUST autonomously call `update_memory` or `delete_memory` using the `[ID]` provided in the semantic search results.
 "#;
 
 struct RulesTarget {

@@ -49,7 +49,20 @@ pub struct ListRoomsTool {
     pub wing: String,
 }
 
-tool_box!(NexusTools, [AddMemoryTool, SearchMemoryTool, ListWingsTool, ListRoomsTool]);
+#[mcp_tool(name = "update_memory", description = "Updates an existing memory by its ID. Use this to explicitly fix contradictions or update stale facts.")]
+#[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
+pub struct UpdateMemoryTool {
+    pub id: i64,
+    pub text: String,
+}
+
+#[mcp_tool(name = "delete_memory", description = "Deletes an existing memory by its ID. Use this to permanently remove false or outdated memories that contradict new truths.")]
+#[derive(Debug, serde::Deserialize, serde::Serialize, JsonSchema)]
+pub struct DeleteMemoryTool {
+    pub id: i64,
+}
+
+tool_box!(NexusTools, [AddMemoryTool, SearchMemoryTool, ListWingsTool, ListRoomsTool, UpdateMemoryTool, DeleteMemoryTool]);
 
 pub struct NexusHandler {
     manager: Arc<MemoryManager>,
@@ -126,6 +139,18 @@ impl ServerHandler for NexusHandler {
                         Ok(CallToolResult::text_content(vec![res.into()]))
                     },
                     Err(e) => Ok(CallToolResult::text_content(vec![format!("Error listing rooms: {:?}", e).into()])),
+                }
+            },
+            NexusTools::UpdateMemoryTool(t) => {
+                match self.manager.update_memory(t.id, &t.text) {
+                    Ok(_) => Ok(CallToolResult::text_content(vec!["Memory updated successfully.".into()])),
+                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error updating memory: {:?}", e).into()])),
+                }
+            },
+            NexusTools::DeleteMemoryTool(t) => {
+                match self.manager.delete_memory(t.id) {
+                    Ok(_) => Ok(CallToolResult::text_content(vec!["Memory deleted successfully.".into()])),
+                    Err(e) => Ok(CallToolResult::text_content(vec![format!("Error deleting memory: {:?}", e).into()])),
                 }
             }
         }
